@@ -5,7 +5,9 @@
       "Bash(python:*)",
       "Bash(conda run:*)",
       "Bash(/c/Users/coo/miniconda3/python.exe:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ls:*)"
     ]
   }
 }

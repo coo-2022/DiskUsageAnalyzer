@@ -63,3 +63,42 @@ class ReportGenerator:
         """创建进度条"""
         filled = int(percent / 100 * length)
         return "█" * filled + "░" * (length - filled)
+
+    def show_duplicates(self, duplicates: dict, top_n: int = 10):
+        """显示重复文件报告"""
+        if not duplicates:
+            print("\n✅ 未发现重复文件")
+            return
+
+        print("\n" + "=" * 70)
+        print(f"🔁 重复文件检测 (Top {top_n})")
+        print("=" * 70)
+
+        # 按可节省空间排序
+        dup_list = []
+        for file_hash, files in duplicates.items():
+            total_size = sum(size for _, size in files)
+            wasted_space = total_size - files[0][1]  # 总大小 - 一个文件的大小
+            dup_list.append((wasted_space, len(files), files))
+
+        dup_list.sort(key=lambda x: x[0], reverse=True)
+
+        total_wasted = 0
+        for i, (wasted, count, files) in enumerate(dup_list[:top_n], 1):
+            total_wasted += wasted
+            size_str = self.analyzer.format_size(files[0][1])
+            wasted_str = self.analyzer.format_size(wasted)
+
+            print(f"\n📌 重复组 #{i} ({count} 个文件, 各 {size_str})")
+            print(f"   ⚠️  可节省: {wasted_str}")
+
+            for j, (path, _) in enumerate(files, 1):
+                try:
+                    rel_path = path.relative_to(self.analyzer.root_path)
+                except ValueError:
+                    rel_path = path
+                print(f"      {j}. {rel_path}")
+
+        print("\n" + "-" * 70)
+        print(f"💰 总计可节省空间: {self.analyzer.format_size(total_wasted)}")
+        print("=" * 70)

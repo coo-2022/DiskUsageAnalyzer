@@ -21,3 +21,6 @@ Thumbs.db
 
 # Project specific
 *.log
+.analyzer_cache/
+*.csv
+*.json
