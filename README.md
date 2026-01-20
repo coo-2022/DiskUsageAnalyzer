@@ -8,6 +8,9 @@
 - 🔍 **智能排序** - 自动找出占用空间最大的文件夹和文件
 - 📈 **分类统计** - 按文件类型分析空间占用情况
 - 🎨 **可视化报告** - 清晰的终端表格输出，带进度条
+- 🚀 **缓存机制** - 加速二次扫描，保存扫描结果
+- 🔁 **重复文件检测** - 查找重复文件，节省磁盘空间
+- 📊 **CSV/JSON导出** - 导出详细报告用于深入分析
 - ⚡ **跨平台** - Windows / macOS / Linux 通用
 
 ## 安装
@@ -37,20 +40,57 @@ python main.py ~
 python main.py -n 20
 ```
 
-### 高级用法
+### 高级功能
+
+#### 1. 使用缓存加速
 
 ```bash
-# 不显示扫描进度
-python main.py C:\ --no-progress
+# 第一次扫描会保存缓存
+python main.py C:\
 
-# 分析下载文件夹
-python main.py ~/Downloads
+# 第二次使用缓存，几乎瞬间完成
+python main.py C:\ --cache
 
-# 分析整个D盘
-python main.py D:\
+# 强制重新扫描
+python main.py C:\ --no-cache
+```
+
+#### 2. 查找重复文件
+
+```bash
+# 查找重复文件（默认大于1MB）
+python main.py ~/Downloads --duplicates
+
+# 只检测大于10MB的文件
+python main.py ~/Downloads --duplicates --dup-min-size 10
+```
+
+#### 3. 导出报告
+
+```bash
+# 导出CSV格式（方便Excel打开）
+python main.py C:\ --export-csv
+
+# 导出JSON格式
+python main.py C:\ --export-json report.json
+
+# 指定导出目录
+python main.py C:\ --export-csv --export-dir ./reports
+```
+
+#### 4. 组合使用
+
+```bash
+# 分析整个D盘，使用缓存，查找重复文件，导出报告
+python main.py D:\ --cache --duplicates --export-csv --export-json d_drive_report.json
+
+# 快速查看Top 20大文件
+python main.py . -n 20 --no-progress
 ```
 
 ## 输出示例
+
+### 基本报告
 
 ```
 📊 磁盘使用分析报告 - C:\Users\username
@@ -81,24 +121,55 @@ python main.py D:\
    ...
 ```
 
+### 重复文件报告
+
+```
+🔁 重复文件检测 (Top 10)
+======================================================================
+
+📌 重复组 #1 (3 个文件, 各 1.2 GB)
+   ⚠️  可节省: 2.4 GB
+      1. Downloads/backup.zip
+      2. Documents/backup copy.zip
+      3. .temp/backup.zip
+
+📌 重复组 #2 (2 个文件, 各 450 MB)
+   ⚠️  可节省: 450 MB
+      1. Videos/movie.mp4
+      2. Backup/movie.mp4
+
+----------------------------------------------------------------------
+💰 总计可节省空间: 2.9 GB
+======================================================================
+```
+
 ## 项目结构
 
 ```
 disk_usage_analyzer/
-├── disk_analyzer.py   # 核心分析器
-├── reporter.py        # 报告生成器
+├── disk_analyzer.py   # 核心分析器（扫描、缓存、重复检测、导出）
+├── reporter.py        # 报告生成器（终端输出）
 ├── main.py           # CLI 入口
+├── .analyzer_cache/  # 缓存目录（自动生成）
 └── README.md         # 说明文档
 ```
+
+## 技术实现
+
+- **缓存机制**: 使用 `pickle` 序列化扫描结果，基于路径哈希存储
+- **重复检测**: 先按文件大小预筛选，再计算 MD5 哈希确认
+- **导出功能**: CSV 使用 `csv` 模块（UTF-8-BOM编码），JSON 使用 `json` 模块
 
 ## 开发路线
 
 - [x] 基础扫描和统计功能
 - [x] 终端可视化报告
-- [ ] CSV/JSON 导出
-- [ ] 重复文件检测
+- [x] CSV/JSON 导出
+- [x] 重复文件检测
+- [x] 缓存机制加速二次扫描
 - [ ] HTML 可视化报告
-- [ ] 缓存机制加速二次扫描
+- [ ] 忽略列表配置
+- [ ] 定时扫描和报告
 
 ## License
 
