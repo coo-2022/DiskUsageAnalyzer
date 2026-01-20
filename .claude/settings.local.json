@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(python:*)",
+      "Bash(conda run:*)",
+      "Bash(/c/Users/coo/miniconda3/python.exe:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
