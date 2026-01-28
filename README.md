@@ -6,7 +6,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/yourusername/disk_usage_analyzer)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/coo-2022/DiskUsageAnalyzer)
 
 功能丰富 | 零依赖 | 易于使用
 
@@ -38,7 +38,7 @@
 ### 克隆项目
 
 ```bash
-git clone https://github.com/yourusername/disk_usage_analyzer.git
+git clone https://github.com/coo-2022/DiskUsageAnalyzer.git
 cd disk_usage_analyzer
 ```
 
@@ -288,7 +288,7 @@ disk_usage_analyzer/
 
 ## 👨‍💻 作者
 
-**Your Name** - [@yourusername](https://github.com/yourusername)
+**coo** - [@coo-2022](https://github.com/coo-2022)
 
 ## 🙏 致谢
 
@@ -297,8 +297,7 @@ disk_usage_analyzer/
 
 ## 📧 联系方式
 
-- GitHub Issues: [提交问题](https://github.com/yourusername/disk_usage_analyzer/issues)
-- Email: your.email@example.com
+- GitHub Issues: [提交问题](https://github.com/coo-2022/DiskUsageAnalyzer/issues)
 
 ---
 
@@ -306,6 +305,6 @@ disk_usage_analyzer/
 
 **如果这个项目对你有帮助，请给它一个⭐️**
 
-Made with ❤️ by [Your Name](https://github.com/yourusername)
+Made with ❤️ by [coo](https://github.com/coo-2022)
 
 </div>
