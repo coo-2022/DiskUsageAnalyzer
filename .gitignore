@@ -22,5 +22,9 @@ Thumbs.db
 # Project specific
 *.log
 .analyzer_cache/
-*.csv
-*.json
+# CSV/JSON exports (except examples)
+folders_*.csv
+file_types_*.csv
+large_files_*.csv
+report_*.json
+!report.example.json

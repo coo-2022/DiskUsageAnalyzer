@@ -3,8 +3,13 @@ Disk Usage Analyzer - 命令行入口
 """
 import argparse
 import sys
+from pathlib import Path
 from disk_analyzer import DiskAnalyzer
 from reporter import ReportGenerator
+
+# 读取版本号
+VERSION_FILE = Path(__file__).parent / 'VERSION'
+VERSION = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else '1.1.0'
 
 
 def main():
@@ -21,6 +26,12 @@ def main():
   python main.py . --export-csv       # 导出CSV报告
   python main.py . --export-json      # 导出JSON报告
         """
+    )
+
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {VERSION}'
     )
 
     parser.add_argument(
