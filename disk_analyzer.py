@@ -9,14 +9,9 @@ import json
 import csv
 from pathlib import Path
 from collections import defaultdict
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Set
 from datetime import datetime
-
-# 设置UTF-8编码输出（Windows兼容）
-if sys.platform == 'win32':
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+from platform_handler import get_platform_handler_singleton, FileInfo
 
 
 class DiskAnalyzer:
@@ -30,9 +25,16 @@ class DiskAnalyzer:
         self.folders = {}  # path -> size
         self.file_types = defaultdict(int)  # extension -> size
         self.large_files = []  # list of (path, size)
-        self.all_files = []  # 新增：记录所有文件 (path, size, mtime)
+        self.all_files = []  # 记录所有文件 (path, size, mtime)
         self.scan_time = None  # 扫描时间
         self.cache_dir = Path('.analyzer_cache')
+
+        # 获取平台处理器单例
+        self.platform = get_platform_handler_singleton()
+
+        # 统计信息
+        self.symlink_count = 0
+        self.skipped_paths: Set[Path] = set()
 
     def scan(self, show_progress: bool = True):
         """扫描目录"""
@@ -46,29 +48,40 @@ class DiskAnalyzer:
             # 计算当前目录大小
             dir_size = 0
 
+            # 使用平台处理器过滤需要跳过的目录
+            dirs[:] = [d for d in dirs if not self.platform.should_skip_path(Path(root) / d)]
+
             for file in files:
                 file_path = Path(root) / file
-                try:
-                    stat = file_path.stat()
-                    size = stat.st_size
-                    mtime = stat.st_mtime
-                    dir_size += size
-                    self.file_count += 1
-                    self.total_size += size
 
-                    # 记录所有文件（用于重复检测）
-                    self.all_files.append((file_path, size, mtime))
+                # 使用平台处理器获取文件信息
+                file_info: Optional[FileInfo] = self.platform.get_file_info(file_path)
 
-                    # 统计文件类型
-                    ext = file_path.suffix.lower() or "(无扩展名)"
-                    self.file_types[ext] += size
+                if file_info is None:
+                    continue
 
-                    # 记录大文件 (> 100MB)
-                    if size > 100 * 1024 * 1024:
-                        self.large_files.append((file_path, size))
+                # 统计符号链接（但不计入大小）
+                if file_info.is_symlink:
+                    self.symlink_count += 1
+                    # 符号链接仍然计入大小（指向的文件大小）
+                    # 如果要跳过符号链接，可以在这里 continue
 
-                except (PermissionError, FileNotFoundError) as e:
-                    pass
+                size = file_info.size
+                mtime = file_info.mtime
+                dir_size += size
+                self.file_count += 1
+                self.total_size += size
+
+                # 记录所有文件（用于重复检测）
+                self.all_files.append((file_path, size, mtime))
+
+                # 统计文件类型
+                ext = file_path.suffix.lower() or "(无扩展名)"
+                self.file_types[ext] += size
+
+                # 记录大文件 (> 100MB)
+                if size > 100 * 1024 * 1024:
+                    self.large_files.append((file_path, size))
 
             # 记录文件夹大小
             self.folders[Path(root)] = dir_size
@@ -80,6 +93,10 @@ class DiskAnalyzer:
 
         if show_progress:
             print(f"\n✅ 扫描完成! 共扫描 {self.dir_count} 个目录, {self.file_count} 个文件")
+            if self.symlink_count > 0:
+                print(f"🔗 发现 {self.symlink_count} 个符号链接")
+            if self.skipped_paths:
+                print(f"⏭️  跳过 {len(self.skipped_paths)} 个特殊路径")
 
         self.scan_time = datetime.now()
 
@@ -198,6 +215,79 @@ class DiskAnalyzer:
     def find_duplicates(self, min_size: int = 1024 * 1024) -> Dict[str, List[Tuple[Path, int]]]:
         """
         查找重复文件
+
+        Args:
+            min_size: 只检测大于此大小的文件（默认1MB），加快速度
+
+        Returns:
+            {hash: [(file_path, size), ...]} - 重复文件列表
+        """
+        # 如果支持inode，使用inode快速去重
+        if self.platform.supports_inodes():
+            return self._find_duplicates_with_inodes(min_size)
+        else:
+            return self._find_duplicates_by_hash(min_size)
+
+    def _find_duplicates_with_inodes(self, min_size: int) -> Dict[str, List[Tuple[Path, int]]]:
+        """
+        使用inode信息快速查找重复文件（Linux/macOS）
+
+        通过inode可以快速识别硬链接，避免重复计算哈希
+        """
+        # 按文件大小分组
+        size_groups = defaultdict(list)
+        inode_map: Dict[int, List[Path]] = defaultdict(list)
+
+        for file_path, size, _ in self.all_files:
+            if size < min_size:
+                continue
+
+            size_groups[size].append((file_path, size))
+
+            # 获取inode信息
+            file_info = self.platform.get_file_info(file_path)
+            if file_info and file_info.inode:
+                inode_map[file_info.inode].append(file_path)
+
+        # 找出硬链接（相同inode的文件）
+        hardlink_groups = []
+        for inode, paths in inode_map.items():
+            if len(paths) > 1:
+                # 这些是硬链接，只保留一个用于哈希计算
+                hardlink_groups.append(paths[0])
+
+        duplicates = {}
+        checked_hashes = set()
+
+        for size, files in size_groups.items():
+            if len(files) < 2:
+                continue
+
+            # 计算哈希值（跳过硬链接，只计算一次）
+            for file_path, size in files:
+                # 如果是硬链接的代表文件，或者不在硬链接组中
+                is_representative = True
+                for group in hardlink_groups:
+                    if file_path in group and file_path != group[0]:
+                        is_representative = False
+                        break
+
+                if not is_representative:
+                    continue
+
+                file_hash = self._calculate_file_hash(file_path)
+                if file_hash and file_hash not in checked_hashes:
+                    if file_hash not in duplicates:
+                        duplicates[file_hash] = []
+                    duplicates[file_hash].append((file_path, size))
+                    checked_hashes.add(file_hash)
+
+        # 只返回有重复的文件
+        return {h: files for h, files in duplicates.items() if len(files) > 1}
+
+    def _find_duplicates_by_hash(self, min_size: int) -> Dict[str, List[Tuple[Path, int]]]:
+        """
+        通过哈希值查找重复文件（Windows）
 
         Args:
             min_size: 只检测大于此大小的文件（默认1MB），加快速度

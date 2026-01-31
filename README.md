@@ -22,7 +22,15 @@
 - 🚀 **缓存机制** - 加速二次扫描，保存扫描结果
 - 🔁 **重复文件检测** - 查找重复文件，节省磁盘空间
 - 📊 **CSV/JSON导出** - 导出详细报告用于深入分析
-- ⚡ **跨平台** - Windows / macOS / Linux 通用
+- ⚡ **跨平台支持** - Windows / macOS / Linux 全平台适配
+
+### 平台特性
+- 🔗 **符号链接处理** - 智能识别和处理符号链接（Linux/macOS）
+- 🔍 **inode优化** - 使用inode信息加速重复文件检测（Linux/macOS）
+- 🚫 **智能跳过** - 自动跳过特殊文件系统和系统目录
+  - **Linux**: `/proc`, `/sys`, `/dev`, `/run`, `/tmp` 等虚拟文件系统
+  - **Windows**: 系统目录、回收站、隐藏文件等
+  - **macOS**: Spotlight索引、FSEvents等系统目录
 
 ### 辅助工具
 - 🦀 **Rust清理工具** - 一键清理Rust编译产物（target目录）
@@ -223,6 +231,7 @@ python tools/analyze_wsl.py --cleanup
 ```
 disk_usage_analyzer/
 ├── disk_analyzer.py          # 核心分析引擎
+├── platform_handler.py       # 跨平台抽象层（平台适配）
 ├── reporter.py               # 报告生成器
 ├── main.py                   # CLI 入口
 ├── tools/                    # 辅助工具
@@ -236,25 +245,168 @@ disk_usage_analyzer/
 └── LICENSE                   # MIT许可证
 ```
 
+## 🌍 跨平台支持
+
+本项目通过 `platform_handler.py` 提供了完整的跨平台抽象层，自动适配不同操作系统的特性。
+
+### 支持的平台
+
+| 平台 | 支持状态 | 特殊功能 |
+|------|---------|---------|
+| **Windows** | ✅ 完全支持 | UTF-8控制台输出、系统目录跳过 |
+| **Linux** | ✅ 完全支持 | 符号链接处理、inode优化、特殊文件系统跳过 |
+| **macOS** | ✅ 完全支持 | 继承Linux特性、macOS特有路径处理 |
+
+### 平台差异处理
+
+#### Linux 特性
+
+1. **特殊文件系统自动跳过**
+   - 自动检测并跳过 `/proc`, `/sys`, `/dev`, `/run` 等虚拟文件系统
+   - 通过读取 `/proc/mounts` 动态识别特殊挂载点
+   - 避免扫描无限大小的虚拟文件（如 `/dev/null`）
+
+2. **符号链接处理**
+   - 使用 `lstat()` 获取链接本身信息
+   - 统计符号链接数量，可选是否跳过
+   - 获取链接目标路径
+
+3. **inode 优化**
+   - 重复文件检测时利用inode快速识别硬链接
+   - 避免对硬链接重复计算哈希值
+   - 显著提升检测速度
+
+#### Windows 特性
+
+1. **控制台编码**
+   - 自动设置 UTF-8 编码输出
+   - 正确显示中文和特殊字符
+
+2. **系统目录跳过**
+   - 自动跳过 `System Volume Information`
+   - 自动跳过 `$RECYCLE.BIN` 回收站
+   - 自动跳过隐藏文件/目录
+
+3. **标准文件系统**
+   - 使用标准 Windows API
+   - 无 inode 概念，使用哈希值进行重复检测
+
+#### macOS 特性
+
+1. **继承 Linux 特性**
+   - 支持符号链接和 inode
+   - Unix-like 文件系统
+
+2. **macOS 特有路径**
+   - 跳过 Spotlight 索引 `/.Spotlight-V100`
+   - 跳过文件系统事件 `/.fseventsd`
+   - 跳过回收站 `/.Trashes`
+   - 处理网络卷 `/Volumes`
+
+### 架构设计
+
+```
+┌─────────────────────────────────────┐
+│      DiskAnalyzer (核心引擎)          │
+│  - 扫描、统计、缓存、重复检测         │
+└──────────────┬──────────────────────┘
+               │
+               │ 使用统一的抽象接口
+               │
+┌──────────────▼──────────────────────┐
+│   PlatformHandler (抽象基类)         │
+│  - should_skip_path()               │
+│  - get_file_info()                  │
+│  - supports_inodes()                │
+└──────────────┬──────────────────────┘
+               │
+       ┌───────┴───────┬──────────────┐
+       │               │              │
+┌──────▼──────┐ ┌─────▼─────┐ ┌─────▼─────┐
+│ WindowsHandler│LinuxHandler│ MacOSHandler│
+│  - UTF-8    │  - inode   │  - 继承Linux│
+│  - 系统目录  │  - 符号链接 │  - 特殊路径│
+└─────────────┘ └───────────┘ └───────────┘
+```
+
+### 扩展性
+
+如需支持新平台或自定义行为，只需：
+
+1. 继承 `PlatformHandler` 抽象类
+2. 实现必要的抽象方法
+3. 在 `get_platform_handler()` 中添加平台检测逻辑
+
+示例：
+```python
+class CustomHandler(PlatformHandler):
+    def should_skip_path(self, path: Path) -> bool:
+        # 自定义路径过滤逻辑
+        return False
+
+    def get_file_info(self, path: Path) -> Optional[FileInfo]:
+        # 自定义文件信息获取
+        return FileInfo(...)
+```
+
 ## 🔧 技术实现
 
 ### 核心技术
 - **扫描引擎**: 使用 `os.walk()` 高效遍历目录树
+- **平台抽象**: `PlatformHandler` 抽象层封装平台差异
+  - 策略模式：不同平台使用不同的实现策略
+  - 单例模式：全局共享平台处理器实例
+  - 工厂模式：根据 `sys.platform` 自动创建对应处理器
 - **缓存机制**: 使用 `pickle` 序列化扫描结果，基于路径哈希存储
-- **重复检测**: 先按文件大小预筛选，再计算 MD5 哈希确认
+- **重复检测**:
+  - **Linux/macOS**: 使用 inode 快速识别硬链接 + MD5 哈希
+  - **Windows**: 文件大小预筛选 + MD5 哈希
 - **导出功能**:
   - CSV: 使用 `csv` 模块（UTF-8-BOM编码，Excel兼容）
   - JSON: 使用 `json` 模块，包含完整统计信息
+
+### 平台适配层
+
+**platform_handler.py** 提供的核心接口：
+
+```python
+class PlatformHandler(ABC):
+    @abstractmethod
+    def should_skip_path(self, path: Path) -> bool:
+        """判断是否应该跳过某个路径"""
+
+    @abstractmethod
+    def get_file_info(self, path: Path) -> Optional[FileInfo]:
+        """获取文件信息，如果无法访问返回None"""
+
+    @abstractmethod
+    def supports_inodes(self) -> bool:
+        """是否支持inode信息"""
+```
+
+**统一的文件信息结构**：
+```python
+@dataclass
+class FileInfo:
+    path: Path              # 文件路径
+    size: int               # 文件大小
+    mtime: float            # 修改时间
+    is_symlink: bool        # 是否符号链接
+    inode: Optional[int]    # inode号（Linux/macOS）
+    mode: Optional[int]     # 文件权限
+    target: Optional[Path]  # 符号链接目标
+```
 
 ### 性能优化
 - 仅在内存中保留必要信息（路径、大小、修改时间）
 - 使用生成器处理大型目录
 - 智能缓存避免重复扫描
+- inode优化避免重复哈希计算（Linux/macOS）
 - MD5计算仅在需要时进行
 
 ## 🛣️ 开发路线
 
-### 已完成 (v1.1)
+### 已完成 (v1.2)
 - [x] 基础扫描和统计功能
 - [x] 终端可视化报告
 - [x] CSV/JSON 导出
@@ -262,6 +414,13 @@ disk_usage_analyzer/
 - [x] 缓存机制加速二次扫描
 - [x] Rust清理工具
 - [x] WSL分析工具
+- [x] **跨平台架构重构** (v1.2)
+  - [x] PlatformHandler 抽象层
+  - [x] Linux 特殊文件系统支持
+  - [x] 符号链接处理
+  - [x] inode 优化重复检测
+  - [x] Windows UTF-8 控制台支持
+  - [x] macOS 特有路径处理
 
 ### 计划中
 - [ ] HTML可视化报告
